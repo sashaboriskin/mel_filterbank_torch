@@ -1,13 +1,15 @@
 import argparse
 import os
 import time
+import glob
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+import torchaudio
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
-from torchaudio.datasets import SPEECHCOMMANDS
+    
 
 from utils import count_parameters, count_flops
 from melbanks import LogMelFilterBanks
@@ -18,15 +20,43 @@ TARGET_SR = 16000
 TARGET_LENGTH = 16000  # 1 second at 16 kHz
 
 
-class YesNoSpeechCommands(SPEECHCOMMANDS):
-    """SPEECHCOMMANDS filtered to YES / NO classes only."""
+class YesNoSpeechCommands(Dataset):
+    """Speech Commands filtered to YES/NO, reads from extracted folder."""
 
     def __init__(self, subset: str, data_dir: str = "./data"):
-        super().__init__(root=data_dir, subset=subset, download=True)
-        # _walker contains full file paths; parent dir name == label
-        self._walker = [
-            w for w in self._walker if os.path.basename(os.path.dirname(w)) in LABELS
-        ]
+        super().__init__()
+        root = os.path.join(data_dir, "SpeechCommands", "speech_commands_v0.02")
+
+        with open(os.path.join(root, "validation_list.txt")) as f:
+            val_files = set(f.read().strip().splitlines())
+        with open(os.path.join(root, "testing_list.txt")) as f:
+            test_files = set(f.read().strip().splitlines())
+
+        self.samples = []
+        for label in LABELS:
+            label_dir = os.path.join(root, label)
+            for wav_path in sorted(glob.glob(os.path.join(label_dir, "*.wav"))):
+                rel_path = os.path.join(label, os.path.basename(wav_path))
+                if subset == "validation" and rel_path in val_files:
+                    self.samples.append((wav_path, label))
+                elif subset == "testing" and rel_path in test_files:
+                    self.samples.append((wav_path, label))
+                elif (
+                    subset == "training"
+                    and rel_path not in val_files
+                    and rel_path not in test_files
+                ):
+                    self.samples.append((wav_path, label))
+
+        print(f"[{subset}] {len(self.samples)} samples")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        wav_path, label = self.samples[idx]
+        waveform, sr = torchaudio.load(wav_path)
+        return waveform, sr, label
 
 
 def make_collate_fn(mel_transform: LogMelFilterBanks):
@@ -196,6 +226,7 @@ def main():
     best_val_acc = 0.0
 
     for epoch in range(1, args.epochs + 1):
+        print("epoch: ", epoch)
         t0 = time.time()
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
         epoch_time = time.time() - t0
