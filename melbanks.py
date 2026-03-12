@@ -92,11 +92,36 @@ class LogMelFilterBanks(nn.Module):
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
     signal, sr = torchaudio.load("test.wav")
     logmelbanks = LogMelFilterBanks()(signal)
     print(logmelbanks.shape)
 
     melspec = torchaudio.transforms.MelSpectrogram(hop_length=160, n_mels=80)(signal)
+    ref_logmel = torch.log(melspec + 1e-6)
 
-    assert torch.log(melspec + 1e-6).shape == logmelbanks.shape
-    assert torch.allclose(torch.log(melspec + 1e-6), logmelbanks)
+    assert ref_logmel.shape == logmelbanks.shape
+    assert torch.allclose(ref_logmel, logmelbanks)
+    print(f"Allclose: True, max abs diff: {(logmelbanks - ref_logmel).abs().max().item():.2e}")
+
+    custom = logmelbanks.squeeze(0).detach()
+    ref = ref_logmel.squeeze(0).detach()
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+    im0 = axes[0].imshow(custom.numpy(), aspect="auto", origin="lower")
+    axes[0].set_title("LogMelFilterBanks (custom)")
+    axes[0].set_xlabel("Frame")
+    axes[0].set_ylabel("Mel bin")
+    fig.colorbar(im0, ax=axes[0], format="%.1f")
+
+    im1 = axes[1].imshow(ref.numpy(), aspect="auto", origin="lower")
+    axes[1].set_title("torchaudio MelSpectrogram + log")
+    axes[1].set_xlabel("Frame")
+    axes[1].set_ylabel("Mel bin")
+    fig.colorbar(im1, ax=axes[1], format="%.1f")
+
+    fig.suptitle("Log-Mel Spectrogram comparison (test.wav, n_mels=80)", y=1.02)
+    fig.tight_layout()
+    fig.savefig("img/spectrogram_comparison.png", dpi=150, bbox_inches="tight")
+    print("Saved to img/spectrogram_comparison.png")

@@ -1,3 +1,11 @@
+# LogMelFilterBanks validation
+
+The custom `LogMelFilterBanks` layer was validated against the native `torchaudio.transforms.MelSpectrogram` on `test.wav` (16 kHz). 
+
+![Spectrogram comparison](img/spectrogram_comparison.png)
+
+# YesNoSpeechCommands classification
+
 ## Exps plan
 
 | # | Variable | Value | Goal |
